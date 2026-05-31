@@ -3,28 +3,95 @@ name: CI
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'           # no correr si solo cambió documentación
   pull_request:
     branches: [ main ]
+  workflow_dispatch:       # permite ejecución manual desde la UI
+
+# Variables globales para todo el workflow
+env:
+  DOTNET_VERSION: '8.0.x'
+  BUILD_CONFIG: Release
+
+# Permisos mínimos
+permissions:
+  contents: read
 
 jobs:
-  build-and-test:
-    name: Build y Test
+  # ── Job 1: Verificar formato ─────────────────────────────────
+  formato:
+    name: Verificar formato
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout del código
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Verificar formato del código
+        run: dotnet format --verify-no-changes --verbosity diagnostic
 
-      - name: Setup .NET
+  # ── Job 2: Build y test en matriz ────────────────────────────
+  build-test:
+    name: Build y Test (.NET ${{ matrix.dotnet }})
+    needs: formato            # solo corre si el formato pasó
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dotnet: ['8.0.x']     # podrías agregar '9.0.x' aquí
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ matrix.dotnet }}
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: ${{ matrix.dotnet }}
+
+      - name: Cache de NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
 
       - name: Restaurar dependencias
         run: dotnet restore
 
       - name: Compilar
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build --configuration ${{ env.BUILD_CONFIG }} --no-restore
 
       - name: Ejecutar tests
-        run: dotnet test --configuration Release --no-build --verbosity normal
+        run: |
+          dotnet test \
+            --configuration ${{ env.BUILD_CONFIG }} \
+            --no-build \
+            --verbosity normal \
+            --logger "trx;LogFileName=resultados.trx"
+
+      - name: Subir resultados de tests
+        if: always()          # sube los resultados incluso si los tests fallaron
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-tests-${{ matrix.dotnet }}
+          path: '**/*.trx'
+          retention-days: 7
+
+  # ── Job 3: Resumen ───────────────────────────────────────────
+  resumen:
+    name: Resumen del pipeline
+    needs: [formato, build-test]
+    runs-on: ubuntu-latest
+    if: always()              # corre siempre, para reportar el estado final
+    steps:
+      - name: Reportar resultado
+        run: |
+          echo "Formato: ${{ needs.formato.result }}"
+          echo "Build y test: ${{ needs.build-test.result }}"
+          if [[ "${{ needs.build-test.result }}" == "success" ]]; then
+            echo "Pipeline completado con éxito"
+          else
+            echo "El pipeline tuvo fallos"
+            exit 1
+          fi
