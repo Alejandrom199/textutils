@@ -1,0 +1,10 @@
+# Resultados de compilación (se regeneran solos)
+bin/
+obj/
+
+# Configuración interna de Visual Studio
+.vs/
+
+# Archivos de usuario
+*.user
+*.suo
