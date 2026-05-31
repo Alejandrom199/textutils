@@ -19,6 +19,17 @@ permissions:
   contents: read
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+    steps:
+      - name: Generar versión
+        id: get-version
+        run: |
+          VERSION="1.0.${{github.run_number}}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+  
   # ── Job 1: Verificar formato ─────────────────────────────────
   formato:
     name: Verificar formato
@@ -34,7 +45,7 @@ jobs:
   # ── Job 2: Build y test en matriz ────────────────────────────
   build-test:
     name: Build y Test (.NET ${{ matrix.dotnet }})
-    needs: formato            # solo corre si el formato pasó
+    needs: [formato, version]            # solo corre si el formato pasó
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -74,7 +85,7 @@ jobs:
         if: always()          # sube los resultados incluso si los tests fallaron
         uses: actions/upload-artifact@v4
         with:
-          name: resultados-tests-${{ matrix.dotnet }}
+          name: resultados-tests-${{ needs.version.outputs.version }}
           path: '**/*.trx'
           retention-days: 7
 
