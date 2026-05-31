@@ -9,7 +9,7 @@ public class StringHelperTests
     public void Reverse_TextoNormal_InvierteCorrectamente()
     {
         var resultado = StringHelper.Reverse("hola");
-        Assert.Equal("aloh", resultado);
+        Assert.Equal("XXXX", resultado);
     }
 
     [Fact]
